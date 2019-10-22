@@ -54,13 +54,13 @@ func DisableEvent(fn func(uint32)) NotifierOption {
 	}
 }
 
-type Notifier interface {
+type Notifiable interface {
 	Notify(c chan<- *Notification, events ...Event)
 	Reset(events ...Event)
 	Stop(c chan<- *Notification)
 }
 
-type EventNotifier struct {
+type Notifier struct {
 	sync.Mutex
 	num      uint32
 	c        *NotifierConfig
@@ -69,21 +69,21 @@ type EventNotifier struct {
 	stopping []stopping
 }
 
-func defaultEventNotifierConfig() *NotifierConfig {
+func defaultNotifierConfig() *NotifierConfig {
 	return &NotifierConfig{
 		enableEvent:  nil,
 		disableEvent: nil,
 	}
 }
 
-func NewEventNotifier(num uint32, opts ...NotifierOption) (*EventNotifier, func(event Event, data interface{})) {
+func NewNotifier(num uint32, opts ...NotifierOption) (*Notifier, func(event Event, data interface{})) {
 
-	config := defaultEventNotifierConfig()
+	config := defaultNotifierConfig()
 	for _, opt := range opts {
 		opt(config)
 	}
 
-	notifier := &EventNotifier{
+	notifier := &Notifier{
 		num: num,
 		m:   make(map[chan<- *Notification]*handler),
 		ref: make([]int64, num),
@@ -141,23 +141,23 @@ func eventnum(event Event) uint32 {
 // 	return num >= 0 && notificationIgnored(num)
 // }
 
-func (e *EventNotifier) Notify(c chan<- *Notification, events ...Event) {
+func (n *Notifier) Notify(c chan<- *Notification, events ...Event) {
 	if c == nil {
 		panic("notifier: Notify using nil channel")
 	}
 
-	e.Lock()
-	defer e.Unlock()
+	n.Lock()
+	defer n.Unlock()
 
-	h := e.m[c]
+	h := n.m[c]
 	if h == nil {
-		if e.m == nil {
-			e.m = make(map[chan<- *Notification]*handler)
+		if n.m == nil {
+			n.m = make(map[chan<- *Notification]*handler)
 		}
 		h = &handler{
-			mask: make([]uint32, (e.num+31)/32),
+			mask: make([]uint32, (n.num+31)/32),
 		}
-		e.m[c] = h
+		n.m[c] = h
 	}
 
 	add := func(num uint32) {
@@ -166,15 +166,15 @@ func (e *EventNotifier) Notify(c chan<- *Notification, events ...Event) {
 		}
 		if !h.want(num) {
 			h.set(num)
-			if e.ref[num] == 0 && e.c.enableEvent != nil {
-				e.c.enableEvent(num)
+			if n.ref[num] == 0 && n.c.enableEvent != nil {
+				n.c.enableEvent(num)
 			}
-			e.ref[num]++
+			n.ref[num]++
 		}
 	}
 
 	if len(events) == 0 {
-		for num := uint32(0); num < e.num; num++ {
+		for num := uint32(0); num < n.num; num++ {
 			add(num)
 		}
 	} else {
@@ -188,14 +188,14 @@ func (e *EventNotifier) Notify(c chan<- *Notification, events ...Event) {
 // 	n.cancel(notif, disableNotification)
 // }
 
-func (e *EventNotifier) Reset(events ...Event) {
-	e.Lock()
-	defer e.Unlock()
+func (n *Notifier) Reset(events ...Event) {
+	n.Lock()
+	defer n.Unlock()
 
 	remove := func(num uint32) {
-		for c, h := range e.m {
+		for c, h := range n.m {
 			if h.want(num) {
-				e.ref[num]--
+				n.ref[num]--
 				h.clear(num)
 
 				hasZeroHandler := true
@@ -206,7 +206,7 @@ func (e *EventNotifier) Reset(events ...Event) {
 					}
 				}
 				if hasZeroHandler {
-					delete(e.m, c)
+					delete(n.m, c)
 				}
 			}
 		}
@@ -214,66 +214,66 @@ func (e *EventNotifier) Reset(events ...Event) {
 	}
 
 	if len(events) == 0 {
-		for num := uint32(0); num < e.num; num++ {
+		for num := uint32(0); num < n.num; num++ {
 			remove(num)
 		}
 	} else {
-		for _, ev := range events {
-			remove(eventnum(ev))
+		for _, e := range events {
+			remove(eventnum(e))
 		}
 	}
 }
 
-func (e *EventNotifier) Stop(c chan<- *Notification) {
-	e.Lock()
+func (n *Notifier) Stop(c chan<- *Notification) {
+	n.Lock()
 
-	h := e.m[c]
+	h := n.m[c]
 	if h == nil {
-		e.Unlock()
+		n.Unlock()
 		return
 	}
-	delete(e.m, c)
+	delete(n.m, c)
 
-	for num := uint32(0); num < e.num; num++ {
+	for num := uint32(0); num < n.num; num++ {
 		if h.want(num) {
-			e.ref[num]--
-			if e.ref[num] == 0 && e.c.disableEvent != nil {
-				e.c.disableEvent(num)
+			n.ref[num]--
+			if n.ref[num] == 0 && n.c.disableEvent != nil {
+				n.c.disableEvent(num)
 			}
 		}
 	}
 
-	e.stopping = append(e.stopping, stopping{c, h})
+	n.stopping = append(n.stopping, stopping{c, h})
 
-	e.Unlock()
+	n.Unlock()
 
-	e.Lock()
+	n.Lock()
 
-	for num, s := range e.stopping {
+	for num, s := range n.stopping {
 		if s.c == c {
-			e.stopping = append(e.stopping[:num], e.stopping[num+1:]...)
+			n.stopping = append(n.stopping[:num], n.stopping[num+1:]...)
 			break
 		}
 	}
 
-	e.Unlock()
+	n.Unlock()
 }
 
-func (e *EventNotifier) process(event Event, data interface{}) {
+func (n *Notifier) process(event Event, data interface{}) {
 	num := eventnum(event)
 	if num < 0 {
 		return
 	}
 
-	e.Lock()
-	defer e.Unlock()
+	n.Lock()
+	defer n.Unlock()
 
 	notification := &Notification{
 		event: event,
 		data:  data,
 	}
 
-	for c, h := range e.m {
+	for c, h := range n.m {
 		if h.want(num) {
 			// send but do not block for it
 			select {
@@ -284,7 +284,7 @@ func (e *EventNotifier) process(event Event, data interface{}) {
 	}
 
 	// Avoid the race mentioned in Stop.
-	for _, s := range e.stopping {
+	for _, s := range n.stopping {
 		if s.h.want(num) {
 			select {
 			case s.c <- notification:

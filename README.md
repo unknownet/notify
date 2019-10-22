@@ -1,10 +1,10 @@
-# Notifier
+# Notify
 
-A go implementation for handling events with an API __"os/signal"__ alike.
+A go implementation for events handling with an API __"os/signal"__ alike.
 
 ## Quickstart
 
 ```sh
 
 # install library
-go get -u github.com/unknownet/notifier
+go get -u github.com/unknownet/notify

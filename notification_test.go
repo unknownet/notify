@@ -7,16 +7,16 @@ import (
 )
 
 const (
-	boggusEvent Event = 1
+	boggusEvent Event = 0
 )
 
 func TestEventnum(t *testing.T) {
 	num := eventnum(boggusEvent)
-	assert.Equal(t, num, uint32(1), "The value should be the same")
+	assert.Equal(t, num, uint32(0), "The value should be the same")
 }
 
 func TestNotifier(t *testing.T) {
-	notifier, process := NewEventNotifier(2)
+	notifier, process := NewNotifier(1)
 
 	c := make(chan *Notification, 1)
 	notifier.Notify(c, boggusEvent)
