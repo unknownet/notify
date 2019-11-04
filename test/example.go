@@ -1,18 +1,3 @@
-# Notify
-
-A go implementation for events handling with an API __"os/signal"__ alike.
-
-## Quickstart
-
-```sh
-
-# install library
-go get -u github.com/unknownet/notify
-```
-
-## Example
-
-```go
 package main
 
 import (
@@ -59,9 +44,3 @@ func main() {
 	notifiable.process(finishEvent, 1)
 	wg.Wait()
 }
-
-```
-Result
-```Shell Session
-$ Notification value 1
-```
